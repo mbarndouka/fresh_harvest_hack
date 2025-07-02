@@ -77,7 +77,7 @@ def _find_geojson(patterns: List[str]) -> Tuple[dict | None, str]:
 
             # ── detect ID field on the first feature ─────────────────
             id_field = None
-            for cand in ("shapeNameID", "shapeID", "shapeISO", "shapeName"):
+            for cand in ("shapeName","shapeNameID", "shapeID", "shapeISO"):
                 if cand in gj["features"][0]["properties"]:
                     id_field = cand
                     break
@@ -197,6 +197,21 @@ def _mapbox_choropleth(
     title: str,
     opacity: float = 0.85,
 ):
+    # ─── pick color scale ────────────────────────────────────────
+    # for stunting: white→red (low→high)
+    # for production/consumption adequacy: red→white (low→high)
+    if nutrient_col == "stunting":
+        colscale = [
+            [0.0, "green"],
+            [0.5, "white"],
+            [1.0, "red"],
+        ]
+    else:
+        colscale = [
+            [0.0, "red"],
+            [0.5, "white"],
+            [1.0, "green"],
+        ]
     if geojson is None:
         # fallback scatter point at Rwanda centroid
         fig = px.scatter_geo(
@@ -207,7 +222,7 @@ def _mapbox_choropleth(
             color=nutrient_col,
             hover_name="display_name",
             title=f"{title} (no geometry)",
-            color_continuous_scale="RdYlBu_r",
+            color_continuous_scale=colscale,
         )
         fig.update_layout(margin=dict(l=0, r=0, t=40, b=0))
         return fig
@@ -220,7 +235,7 @@ def _mapbox_choropleth(
         featureidkey=feature_key,
         hover_name="display_name",
         hover_data={nutrient_col: ":.1f"},
-        color_continuous_scale="RdYlBu_r",
+        color_continuous_scale=colscale, 
         mapbox_style="carto-positron",
         zoom=7,
         center={"lat": -1.94, "lon": 29.9},
@@ -229,7 +244,7 @@ def _mapbox_choropleth(
     fig.update_layout(
         title=dict(text=title, x=0.5, xanchor="center", pad=dict(t=10)),
         margin=dict(l=0, r=0, t=40, b=0),
-        coloraxis_colorbar=dict(title="Deficiency (%)", yanchor="middle", len=250),
+        coloraxis_colorbar=dict(title="Prevalence (%)", yanchor="middle", len=1),
     )
     
     return fig

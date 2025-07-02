@@ -1,17 +1,30 @@
-# page1_overview.py
+# layouts/page1_overview.py
+# ──────────────────────────────────────────────────────────────────────────────
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 import plotly.io as pio
 
-pio.templates.default = "plotly_white"      # keep the global style
+pio.templates.default = "plotly_white"
 
 def get_page_1_layout():
-    """Overview page: filter row ➜ full-width map ➜ bar chart ➜ summary cards"""
+    """Overview page:
+       ┌──────────────┐
+       │   Heading    │
+       ├──────────────┤
+       │ Filters      │   ← three dropdowns side-by-side
+       ├──────────────┤
+       │ Map & Charts │
+    """
     return dbc.Container(
         [
-            html.H2("📊 Overview Maps", className="text-center my-3"),
+            dbc.Row(
+                dbc.Col(
+                    html.H2("Overview Maps", className="text-center mb-4"),
+                    width=12
+                )
+            ),
 
-            # ---------- filters ----------
+            # ─── filter row (flex) ─────────────────────────────────────────
             dbc.Row(
                 [
                     dbc.Col(
@@ -19,62 +32,77 @@ def get_page_1_layout():
                             html.Label("Select Micronutrient:", className="fw-bold"),
                             dcc.Dropdown(
                                 id="nutrient-dropdown",
-                                options=[{"label": n, "value": n.replace(" ", "_")}
-                                         for n in ["Vitamin A", "Iron", "Zinc"]],
+                                options=[
+                                    {"label": "Vitamin A", "value": "Vitamin_A"},
+                                    {"label": "Iron",      "value": "Iron"},
+                                    {"label": "Zinc",      "value": "Zinc"},
+                                ],
                                 value="Vitamin_A",
                                 clearable=False,
                             ),
                         ],
-                        md=4, xs=12,
-                        className="mb-3",
+                        md=4, xs=12, className="mb-3 flex-item"
                     ),
+
+                    dbc.Col(
+                        [
+                            html.Label("Select Indicator:", className="fw-bold"),
+                            dcc.Dropdown(
+                                id="indicator-dropdown",
+                                options=[
+                                    {"label": "Consumption Adequacy", "value": "consumption"},
+                                    {"label": "Production Adequacy",  "value": "production"},
+                                    {"label": "Stunting (% < –2 SD)",  "value": "stunting"},
+                                    {"label": "Gap Score",             "value": "gapscore"},
+                                ],
+                                value="consumption",
+                                clearable=False,
+                            ),
+                        ],
+                        md=4, xs=12, className="mb-3 flex-item"
+                    ),
+
                     dbc.Col(
                         [
                             html.Label("Select Map Level:", className="fw-bold"),
                             dcc.Dropdown(
                                 id="map-level-dropdown",
                                 options=[
-                                    {"label": "Province Level", "value": "province"},
-                                    {"label": "District Level", "value": "district"},
-                                    {"label": "Layered (Districts + Provinces)", "value": "layered"},
+                                    {"label": "Province Level",                  "value": "province"},
+                                    {"label": "District Level",                  "value": "district"},
+                                    {"label": "Layered (District + Province)",   "value": "layered"},
                                 ],
                                 value="province",
                                 clearable=False,
                             ),
                         ],
-                        md=4, xs=12,
-                        className="mb-3",
+                        md=4, xs=12, className="mb-3 flex-item"
                     ),
                 ],
-                className="g-3",
+                className="flex-row g-3",
             ),
 
-            # ---------- full-width map ----------
+            # ─── choropleth map ────────────────────────────────────────────
             dbc.Row(
                 dbc.Col(
-                    dcc.Graph(
-                        id="nutrient-map",
-                        style={"width": "100%"},
-                        config={"responsive": True},
-                    ),
+                    dcc.Graph(id="nutrient-map", className="nutrient-map"),
                     md=12,
-                    className="map-container",
+                    className="graph-container",
                 ),
-                className="gx-0 mb-4",   # gx-0 kills Bootstrap’s horizontal gutter
+                className="gx-0",
+                style={"marginBottom": "-1rem"},
             ),
 
-
-            # ---------- bar chart ----------
+            # ─── bar chart ────────────────────────────────────────────────
             dbc.Row(
                 dbc.Col(
                     dcc.Graph(id="nutrient-bar-chart"),
                     md=12,
-                    className="graph-container",
-                ),
-                className="mb-4",
+                    className="mb-1",
+                )
             ),
 
-            # ---------- summary cards ----------
+            # ─── data overview & stats ─────────────────────────────────────
             dbc.Row(
                 [
                     dbc.Col(
@@ -85,19 +113,24 @@ def get_page_1_layout():
                             ],
                             className="h-100",
                         ),
-                        md=6, className="mb-4",
+                        md=6,
+                        xs=12,
+                        className="mb-4 flex-item",
                     ),
                     dbc.Col(
                         dbc.Card(
                             [
-                                dbc.CardHeader("Regional Overview"),
+                                dbc.CardHeader("Summary Statistics"),
                                 dbc.CardBody(html.Div(id="summary-stats")),
                             ],
                             className="h-100",
                         ),
-                        md=6, className="mb-4",
+                        md=6,
+                        xs=12,
+                        className="mb-4 flex-item",
                     ),
-                ]
+                ],
+                className="flex-row g-3",
             ),
         ],
         fluid=True,

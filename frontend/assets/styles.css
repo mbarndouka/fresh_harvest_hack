@@ -75,6 +75,70 @@ h1, h2, h3{
   .nav-btn{ width: 100%; margin: 6px 0; }
 }
 
+/* ───── (…existing rules remain unchanged) ──── */
+
+.flex-row{
+  display:flex;
+  flex-wrap:wrap;        /* mobile-friendly */
+  gap:1rem;
+  align-items:flex-end;  /* dropdown labels align with bottom */
+}
+.flex-row>.flex-item{
+  flex:1 1 220px;        /* min-width before wrapping */
+}
+
+.table-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:1rem;
+}
+.table-row>.flex-item{
+  flex:1 1 350px;        /* two tables side-by-side on desktop */
+}
+
+/* ────────────────────────────────────────────────
+   assets/styles.css   (only lines inside this box changed)
+   ────────────────────────────────────────────────*/
+
+/* header + nav buttons centred */
+.header-centre{                    /* ▼ previously just “text-align:center;” */
+  text-align:  center;
+  background:  linear-gradient(90deg,
+                               var(--brand-blue) 0%,
+                               var(--brand-green) 100%);
+  color:       #fff;               /* white text on coloured bar            */
+  padding:     1.25rem 1rem;       /* top/bottom, left/right                */
+  border-radius: var(--radius);
+  box-shadow:  0 2px 8px rgba(0,0,0,.06);
+}
+
+/* keep text inside the header white as well */
+.header-centre h1,
+.header-centre h2,
+.header-centre h3,
+.header-centre small{
+  color:#fff;
+}
+
+/* make the nav buttons blend into the bar */
+.header-centre .nav-btn{
+  background:rgba(255,255,255,.18) !important;
+  color:#fff !important;
+}
+.header-centre .nav-btn.active{
+  background:#fff !important;
+  color:var(--brand-blue) !important;
+}
+
+/* (UNCHANGED rules continue below…) */
+.nav-btn-row{
+  display:flex;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:.5rem;
+}
+
+  
 /* 7  ─ Proof-of-load: a 4-px gradient bar at top */
 body::before{
   content:'';
@@ -83,3 +147,14 @@ body::before{
   background:linear-gradient(90deg,var(--brand-blue),var(--brand-green));
 }
 
+/* assets/styles.css */
+.nutrient-map{
+  min-height: 80vh !important;      /* ≥ 60 % of the viewport height   */
+}
+
+.dropdown-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:1rem;
+  align-items:flex-end;
+}
