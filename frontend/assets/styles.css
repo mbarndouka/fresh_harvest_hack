@@ -1,0 +1,160 @@
+/* ────────────────────────────────────────────────
+   assets/styles.css   (drop-in replacement)
+   ────────────────────────────────────────────────*/
+
+/* 0  ─ Global font: Inter */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+/* 1  ─ Brand variables */
+:root{
+  --brand-blue:  #2b8bd2;   /* change to #00a421 etc. and buttons will follow */
+  --brand-green: #27ae60;
+  --brand-grey:  #95a5a6;
+  --bg-light:    #f7f9fb;
+  --text-dark:   #2c3e50;
+  --radius:      8px;
+  --transition:  0.2s ease-in-out;
+}
+
+/* 2  ─ Base styles */
+html, body{
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background:  var(--bg-light);
+  color:       var(--text-dark);
+  margin: 0;
+  padding: 0;
+}
+
+/* Headings */
+h1, h2, h3{
+  font-weight: 600;
+  letter-spacing: .3px;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* 3  ─ Navigation buttons (no inline styles anymore) */
+.nav-btn{
+  background: var(--brand-grey) !important;
+  color: #fff !important;
+  border: none !important;
+  padding: 9px 18px !important;
+  margin: 4px !important;
+  border-radius: var(--radius) !important;
+  transition: var(--transition) !important;
+  font-size: 0.92rem !important;
+  line-height: 1.35;
+}
+.nav-btn.active{ background: var(--brand-blue) !important; }
+.nav-btn:hover { filter: brightness(1.12); }
+
+/* 4  ─ Card & graph helpers */
+.card{
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 6px rgba(0,0,0,.05);
+}
+.card-header{
+  background: transparent;
+  font-weight: 600;
+  padding: .75rem 1rem;
+}
+.graph-container{
+  padding: 12px;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 4px rgba(0,0,0,.04);
+}
+
+/* 6  ─ Bootstrap utility helpers */
+.px-0{ padding-left:0 !important; padding-right:0 !important; }
+.gx-0{ --bs-gutter-x:0 !important; }
+
+@media (max-width: 768px){
+  .nav-btn{ width: 100%; margin: 6px 0; }
+}
+
+/* ───── (…existing rules remain unchanged) ──── */
+
+.flex-row{
+  display:flex;
+  flex-wrap:wrap;        /* mobile-friendly */
+  gap:1rem;
+  align-items:flex-end;  /* dropdown labels align with bottom */
+}
+.flex-row>.flex-item{
+  flex:1 1 220px;        /* min-width before wrapping */
+}
+
+.table-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:1rem;
+}
+.table-row>.flex-item{
+  flex:1 1 350px;        /* two tables side-by-side on desktop */
+}
+
+/* ────────────────────────────────────────────────
+   assets/styles.css   (only lines inside this box changed)
+   ────────────────────────────────────────────────*/
+
+/* header + nav buttons centred */
+.header-centre{                    /* ▼ previously just “text-align:center;” */
+  text-align:  center;
+  background:  linear-gradient(90deg,
+                               var(--brand-blue) 0%,
+                               var(--brand-green) 100%);
+  color:       #fff;               /* white text on coloured bar            */
+  padding:     1.25rem 1rem;       /* top/bottom, left/right                */
+  border-radius: var(--radius);
+  box-shadow:  0 2px 8px rgba(0,0,0,.06);
+}
+
+/* keep text inside the header white as well */
+.header-centre h1,
+.header-centre h2,
+.header-centre h3,
+.header-centre small{
+  color:#fff;
+}
+
+/* make the nav buttons blend into the bar */
+.header-centre .nav-btn{
+  background:rgba(255,255,255,.18) !important;
+  color:#fff !important;
+}
+.header-centre .nav-btn.active{
+  background:#fff !important;
+  color:var(--brand-blue) !important;
+}
+
+/* (UNCHANGED rules continue below…) */
+.nav-btn-row{
+  display:flex;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:.5rem;
+}
+
+  
+/* 7  ─ Proof-of-load: a 4-px gradient bar at top */
+body::before{
+  content:'';
+  display:block;
+  height:4px;
+  background:linear-gradient(90deg,var(--brand-blue),var(--brand-green));
+}
+
+/* assets/styles.css */
+.nutrient-map{
+  min-height: 80vh !important;      /* ≥ 60 % of the viewport height   */
+}
+
+.dropdown-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:1rem;
+  align-items:flex-end;
+}

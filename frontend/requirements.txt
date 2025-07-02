@@ -4,3 +4,6 @@ pandas==2.1.4
 geopandas>=0.13.0
 shapely>=2.0.0
 fiona>=1.8.0
+dash-bootstrap-components==1.6.0
+openpyxl
+

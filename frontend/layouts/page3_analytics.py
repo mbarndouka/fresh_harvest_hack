@@ -1,37 +1,42 @@
-"""
-Page 3: Detailed Analytics Layout
-"""
+import dash_bootstrap_components as dbc
 from dash import dcc, html
 
 def get_page_3_layout():
-    """Return the layout for Page 3 - Detailed Analytics"""
-    return html.Div([
-        html.H2("🔍 Detailed Analytics", style={'textAlign': 'center', 'color': '#2c3e50', 'marginBottom': '30px'}),
-        
-        html.Div([
-            html.Label("Select Analysis Focus:", style={'fontWeight': 'bold'}),
-            dcc.Dropdown(
-                id='analytics-focus-dropdown',
-                options=[
-                    {'label': 'High-Risk Areas', 'value': 'high_risk'},
-                    {'label': 'Population Density Analysis', 'value': 'density'},
-                    {'label': 'Multi-Nutrient Deficiency', 'value': 'multi_nutrient'}
+    return dbc.Container(
+        [
+            html.H2("🔍 Detailed Analytics", className="text-center my-3"),
+
+            dbc.Row(
+                dbc.Col(
+                    [
+                        html.Label("Select Analysis Focus:", className="fw-bold"),
+                        dcc.Dropdown(
+                            id="analytics-focus-dropdown",
+                            options=[
+                                {"label": "High-Risk Areas", "value": "high_risk"},
+                                {"label": "Population Density", "value": "density"},
+                                {"label": "Multi-Nutrient Deficiency", "value": "multi_nutrient"},
+                            ],
+                            value="high_risk",
+                            clearable=False,
+                        ),
+                    ],
+                    md=4, xs=12,
+                ),
+                className="g-3 mb-3",
+            ),
+
+            dbc.Row(
+                [
+                    dbc.Col(dcc.Graph(id="analytics-chart-1"), md=4, className="graph-container"),
+                    dbc.Col(dcc.Graph(id="analytics-chart-2"), md=4, className="graph-container"),
+                    dbc.Col(dcc.Graph(id="analytics-chart-3"), md=4, className="graph-container"),
                 ],
-                value='high_risk'
-            )
-        ], style={'width': '40%', 'display': 'inline-block', 'margin': '20px'}),
-        
-        html.Div([
-            dcc.Graph(id='analytics-chart-1')
-        ], style={'width': '50%', 'display': 'inline-block'}),
-        
-        html.Div([
-            dcc.Graph(id='analytics-chart-2')
-        ], style={'width': '50%', 'display': 'inline-block'}),
-        
-        html.Div([
-            dcc.Graph(id='analytics-chart-3')
-        ], style={'width': '100%', 'margin': '20px 0'}),
-        
-        html.Div(id='analytics-insights', style={'margin': '20px'})
-    ])
+                className="mb-4",
+            ),
+            dbc.Row(
+                dbc.Col(html.Div(id="analytics-insights"), md=12),
+            ),
+        ],
+        fluid=True,
+    )
