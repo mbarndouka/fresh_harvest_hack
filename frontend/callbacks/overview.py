@@ -49,6 +49,8 @@ def register_overview_callbacks(app, df, district_df):
         else:  # layered
             map_fig = create_rwanda_layered_map(df, district_df, selected_nutrient, map_title, level='district')
         
+        map_fig.update_layout(height=600)   # <- add this line
+
         # Data table
         display_df = current_df.head(10) if map_level in ['district', 'layered'] else current_df
         data_table = html.Div([

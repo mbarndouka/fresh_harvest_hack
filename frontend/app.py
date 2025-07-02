@@ -1,5 +1,8 @@
+### app.py
+
 import dash
 from dash import dcc, html
+import dash_bootstrap_components as dbc
 
 # Import our custom Rwanda map module
 from rwanda_map import get_rwanda_data, get_rwanda_district_data, get_rwanda_map_info
@@ -16,6 +19,16 @@ from callbacks.overview import register_overview_callbacks
 from callbacks.trends import register_trends_callbacks
 from callbacks.analytics import register_analytics_callbacks
 from callbacks.tables import register_tables_callbacks
+
+#external_stylesheets = [dbc.themes.FLATLY]   # ①  ONLY the theme here
+
+# Dash will look for styles.css, favicon.ico, etc. in /assets automatically
+app = dash.Dash(
+    __name__,
+    #external_stylesheets=external_stylesheets,
+    suppress_callback_exceptions=True,
+)
+app._favicon = "favicon.ico"         # <-- exactly the filename inside /assets
 
 # Get the data from our map module
 df = get_rwanda_data()
@@ -44,48 +57,54 @@ map_color = "#27ae60" if map_info['geographic_data_loaded'] else "#f39c12"
 # Initialize the Dash app
 app = dash.Dash(__name__)
 
-# Define the main layout
-app.layout = html.Div([
-    # Store component to track current page
-    dcc.Store(id='current-page', data=1),
-    
-    html.H1("NutriGap Rwanda Dashboard", style={'textAlign': 'center', 'color': '#2c3e50'}),
-    
-    # Navigation and status bar
-    html.Div([
-        # Page navigation buttons
-        html.Div([
-            html.Button("📊 Overview Maps", id="page-1-btn", className="nav-button", 
-                       style={'backgroundColor': '#3498db', 'color': 'white', 'border': 'none', 
-                             'padding': '10px 20px', 'margin': '5px', 'borderRadius': '5px', 'cursor': 'pointer'}),
-            html.Button("📈 Trend Analysis", id="page-2-btn", className="nav-button",
-                       style={'backgroundColor': '#95a5a6', 'color': 'white', 'border': 'none', 
-                             'padding': '10px 20px', 'margin': '5px', 'borderRadius': '5px', 'cursor': 'pointer'}),
-            html.Button("🔍 Detailed Analytics", id="page-3-btn", className="nav-button",
-                       style={'backgroundColor': '#95a5a6', 'color': 'white', 'border': 'none', 
-                             'padding': '10px 20px', 'margin': '5px', 'borderRadius': '5px', 'cursor': 'pointer'}),
-            html.Button("📋 Data Tables", id="page-4-btn", className="nav-button",
-                       style={'backgroundColor': '#95a5a6', 'color': 'white', 'border': 'none', 
-                             'padding': '10px 20px', 'margin': '5px', 'borderRadius': '5px', 'cursor': 'pointer'})
-        ], style={'textAlign': 'center', 'margin': '20px 0'}),
-        
-        # Status indicator
-        html.Div([
-            html.P([
-                html.Span(province_status, style={'color': map_color, 'fontWeight': 'bold'}),
-                " | ",
-                html.Span(district_status, style={'color': '#3498db', 'fontWeight': 'bold'}),
-                f" | Provinces: {map_info['num_provinces']} | Districts: {map_info['num_districts']}"
-            ], style={'textAlign': 'center', 'margin': '10px 0', 'fontSize': '14px'})
-        ]),
-    ]),
-    
-    # Page content container
-    html.Div(id='page-content')
-])
+# ---------- Navigation and status bar ----------
+nav_buttons = dbc.ButtonGroup(
+    [
+        dbc.Button("📊 Overview Maps",  id="page-1-btn", className="nav-btn active"),
+        dbc.Button("📈 Trend Analysis",  id="page-2-btn", className="nav-btn"),
+        dbc.Button("🔍 Detailed Analytics", id="page-3-btn", className="nav-btn"),
+        dbc.Button("📋 Data Tables",     id="page-4-btn", className="nav-btn"),
+    ],
+    className="d-flex justify-content-center flex-wrap",
+)
 
+# Define the main layout
+app.layout = html.Div(
+    # Store component to track current page
+     [
+        dcc.Store(id="current-page", data=1),
+        html.H1("NutriGap Rwanda Dashboard", className="text-center text-primary my-2"),
+
+        # navigation + status in a single wrapper
+        html.Div(
+            [
+                nav_buttons,
+                html.Small(
+                    [
+                        html.Span(province_status, style={"color": map_color, "fontWeight": "bold"}),
+                        " | ",
+                        html.Span(district_status, className="text-info fw-bold"),
+                        f" | Provinces: {map_info['num_provinces']} | Districts: {map_info['num_districts']}",
+                    ],
+                    className="d-block text-center mt-2",
+                ),
+            ],
+            className="mb-4",
+        ),
+
+        # page content goes here
+        html.Div(id="page-content"),
+    ]
+)
 # Register all callbacks
-register_navigation_callbacks(app, get_page_1_layout, get_page_2_layout, get_page_3_layout, get_page_4_layout)
+
+register_navigation_callbacks(
+    app,
+    ["page-1-btn", "page-2-btn", "page-3-btn", "page-4-btn"],  # button ids
+    [get_page_1_layout, get_page_2_layout, get_page_3_layout, get_page_4_layout],
+    "page-content",        # id of the Div that holds each page layout
+    "current-page",        # id of the dcc.Store that tracks which page is active
+)
 register_overview_callbacks(app, df, district_df)
 register_trends_callbacks(app, df)
 register_analytics_callbacks(app, df)

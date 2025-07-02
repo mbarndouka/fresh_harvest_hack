@@ -29,6 +29,7 @@ COPY callbacks/ ./callbacks/
 
 # Copy data directory for geographic maps
 COPY data/ ./data/
+COPY assets/ ./assets/
 
 # Expose port 8050
 EXPOSE 8050

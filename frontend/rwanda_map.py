@@ -1,577 +1,278 @@
 """
-Rwanda Map Module
-Handles all geographic data loading and map visualization functionality
+NutriGap – Rwanda Map Utilities
+────────────────────────────────────────────────────────────────────────────
+Public API (unchanged):
+
+  get_rwanda_data()                -> province-level DataFrame
+  get_rwanda_district_data()       -> district-level DataFrame
+  get_rwanda_map_info()            -> dict of status flags for the banner
+
+  create_rwanda_map()              -> Mapbox choropleth (province)
+  create_rwanda_district_map()     -> Mapbox choropleth (district)
+  create_rwanda_layered_map()      -> district polygons + province outline
 """
+
+from __future__ import annotations
+
+import json
+import random
+import pathlib
+from typing import Dict, List, Tuple
 
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import json
-import os
-from pathlib import Path
 
+# Try to use geopandas for zipped files; fallback to plain json
 try:
     import geopandas as gpd
+
     GEOPANDAS_AVAILABLE = True
     print("✅ Geopandas successfully imported")
-except ImportError as e:
+except ImportError:
     GEOPANDAS_AVAILABLE = False
-    print(f"⚠️ Geopandas not available: {e}")
-    print("📊 Will use fallback visualization mode")
+    print("⚠️  Geopandas not available – zip files will be ignored")
 
-class RwandaMapHandler:
-    def __init__(self, data_dir="data"):
-        """
-        Initialize the Rwanda Map Handler
-        
-        Args:
-            data_dir (str): Directory containing the geographic data files
-        """
-        self.data_dir = Path(data_dir)
-        
-        # Province-level data
-        self.gdf = None
-        self.geojson_data = None
-        self.provinces = []
-        
-        # District-level data
-        self.districts_gdf = None
-        self.districts_geojson_data = None
-        self.districts = []
-        
-        # Try to load the geographic data
-        self.load_geographic_data()
-    
-    def load_geographic_data(self):
-        """Load Rwanda geographic data from zip file or extracted files"""
-        print(f"🔍 Looking for geographic data in: {self.data_dir}")
-        print(f"📁 Data directory exists: {self.data_dir.exists()}")
-        
-        # Load province data (ADM1)
-        province_loaded = self._load_province_data()
-        
-        # Load district data (ADM2)
-        district_loaded = self._load_district_data()
-        
-        return province_loaded or district_loaded
-    
-    def _load_province_data(self):
-        """Load province-level geographic data (ADM1)"""
+# ----------------------------------------------------------------------
+# Paths
+# ----------------------------------------------------------------------
+HERE = pathlib.Path(__file__).resolve().parent
+DATA_DIR = HERE / "data"
+
+# accepted file patterns for ADM1 (province) and ADM2 (district)
+ADM1_PATTERNS = [
+    "geoBoundaries-RWA-ADM1.geojson",
+    "geoBoundaries-RWA-ADM1_simplified.geojson",
+    "geoBoundaries-RWA-ADM1-all.zip",
+]
+ADM2_PATTERNS = [
+    "geoBoundaries-RWA-ADM2.geojson",
+    "geoBoundaries-RWA-ADM2_simplified.geojson",
+    "geoBoundaries-RWA-ADM2-all.zip",
+    "geoBoundaries-RWA-ADM2-all (1).zip",  # common download duplicate
+]
+
+
+# ----------------------------------------------------------------------
+# Helper: load whichever file variant exists
+# ----------------------------------------------------------------------
+def _find_geojson(patterns: List[str]) -> Tuple[dict | None, str]:
+    """
+    Return (geojson dict or None, feature_key).
+    Auto-detect whether polygons carry 'shapeNameID', 'shapeID', or 'shapeISO'.
+    """
+    for pat in patterns:
+        path = DATA_DIR / pat
+        if not path.exists():
+            continue
+
         try:
-            if GEOPANDAS_AVAILABLE:
-                # Try to read directly from zip file
-                zip_path = self.data_dir / "geoBoundaries-RWA-ADM1-all.zip"
-                print(f"🔍 Checking province zip file: {zip_path}")
-                print(f"📁 Zip file exists: {zip_path.exists()}")
-                
-                if zip_path.exists():
-                    print(f"📂 Loading province data from {zip_path}")
-                    try:
-                        # Geopandas can read directly from zip files
-                        self.gdf = gpd.read_file(f"zip://{zip_path}")
-                        print(f"✅ Successfully loaded {len(self.gdf)} provinces from zip file")
-                        
-                        # Convert to GeoJSON for Plotly
-                        self.geojson_data = json.loads(self.gdf.to_json())
-                        self.provinces = self.gdf['shapeName'].tolist()
-                        print(f"🗺️ Provinces from zip: {', '.join(self.provinces[:3])}...")
-                        return True
-                        
-                    except Exception as e:
-                        print(f"❌ Failed to load from zip: {e}")
-                        print("🔄 Trying extracted directory...")
-                
-                # Try to read from extracted directory
-                adm1_dir = self.data_dir / "ADM1"
-                geojson_path = adm1_dir / "geoBoundaries-RWA-ADM1.geojson"
-                print(f"🔍 Checking extracted directory: {adm1_dir}")
-                print(f"📁 ADM1 directory exists: {adm1_dir.exists()}")
-                print(f"📄 GeoJSON file exists: {geojson_path.exists()}")
-                
-                if geojson_path.exists():
-                    print(f"📂 Loading province data from {geojson_path}")
-                    try:
-                        self.gdf = gpd.read_file(geojson_path)
-                        self.geojson_data = json.loads(self.gdf.to_json())
-                        self.provinces = self.gdf['shapeName'].tolist()
-                        print(f"✅ Successfully loaded {len(self.gdf)} provinces from GeoJSON")
-                        print(f"🗺️ Provinces from GeoJSON: {', '.join(self.provinces[:3])}...")
-                        return True
-                    except Exception as e:
-                        print(f"❌ Failed to load from GeoJSON with geopandas: {e}")
-            
-            # Fallback: try to read GeoJSON directly without geopandas
-            adm1_dir = self.data_dir / "ADM1"
-            geojson_path = adm1_dir / "geoBoundaries-RWA-ADM1.geojson"
-            
-            print(f"🔄 Attempting fallback: direct JSON loading from {geojson_path}")
-            if geojson_path.exists():
-                print(f"📂 Loading province data from {geojson_path} (without geopandas)")
-                try:
-                    with open(geojson_path, 'r', encoding='utf-8') as f:
-                        self.geojson_data = json.load(f)
-                    
-                    # Extract province names
-                    self.provinces = [
-                        feature['properties']['shapeName'] 
-                        for feature in self.geojson_data['features']
-                    ]
-                    print(f"✅ Successfully loaded {len(self.provinces)} provinces from GeoJSON")
-                    print(f"🗺️ Provinces from JSON: {', '.join(self.provinces[:3])}...")
-                    return True
-                except Exception as e:
-                    print(f"❌ Failed to load GeoJSON directly: {e}")
-            
-            print("❌ No province geographic data sources found")
-            return False
-                
+            if path.suffix == ".zip" and GEOPANDAS_AVAILABLE:
+                gdf = gpd.read_file(f"zip://{path}")
+                gj = json.loads(gdf.to_json())
+            elif path.suffix == ".geojson":
+                with open(path, encoding="utf-8") as f:
+                    gj = json.load(f)
+            else:
+                continue  # skip unknown type
+
+            # ── detect ID field on the first feature ─────────────────
+            id_field = None
+            for cand in ("shapeNameID", "shapeID", "shapeISO", "shapeName"):
+                if cand in gj["features"][0]["properties"]:
+                    id_field = cand
+                    break
+
+            if not id_field:
+                print(f"⚠️  No ID-like property found in {path.name}")
+                return gj, "properties.shapeName"   # fallback to label
+
+            print(f"🗺️  Loaded {len(gj['features'])} features from {path.name} "
+                  f"(id field = {id_field})")
+            return gj, f"properties.{id_field}"
+
         except Exception as e:
-            print(f"❌ Unexpected error in _load_province_data: {str(e)}")
-            import traceback
-            print(f"� Full traceback: {traceback.format_exc()}")
-            return False
-    
-    def _load_district_data(self):
-        """Load district-level geographic data (ADM2)"""
-        try:
-            if GEOPANDAS_AVAILABLE:
-                # Try to read districts from zip file (ADM2 level)
-                zip_path = self.data_dir / "geoBoundaries-RWA-ADM2-all.zip"
-                alt_zip_path = self.data_dir / "geoBoundaries-RWA-ADM2-all (1).zip"
-                
-                for zip_file in [zip_path, alt_zip_path]:
-                    print(f"🔍 Checking district zip file: {zip_file}")
-                    
-                    if zip_file.exists():
-                        print(f"📂 Loading district data from {zip_file}")
-                        try:
-                            self.districts_gdf = gpd.read_file(f"zip://{zip_file}")
-                            print(f"✅ Successfully loaded {len(self.districts_gdf)} districts from zip file")
-                            
-                            # Convert to GeoJSON for Plotly
-                            self.districts_geojson_data = json.loads(self.districts_gdf.to_json())
-                            self.districts = self.districts_gdf['shapeName'].tolist()
-                            print(f"🗺️ Districts loaded: {len(self.districts)} districts")
-                            return True
-                            
-                        except Exception as e:
-                            print(f"❌ Failed to load districts from {zip_file}: {e}")
-                
-                # Try to read from extracted directory (ADM2)
-                adm2_dir = self.data_dir / "ADM2"
-                districts_geojson_path = adm2_dir / "geoBoundaries-RWA-ADM2.geojson"
-                
-                print(f"🔍 Checking extracted district directory: {adm2_dir}")
-                if districts_geojson_path.exists():
-                    print(f"📂 Loading district data from {districts_geojson_path}")
-                    try:
-                        self.districts_gdf = gpd.read_file(districts_geojson_path)
-                        self.districts_geojson_data = json.loads(self.districts_gdf.to_json())
-                        self.districts = self.districts_gdf['shapeName'].tolist()
-                        print(f"✅ Successfully loaded {len(self.districts)} districts from GeoJSON")
-                        return True
-                    except Exception as e:
-                        print(f"❌ Failed to load districts from GeoJSON: {e}")
-            
-            # Fallback: try to read district GeoJSON directly
-            adm2_dir = self.data_dir / "ADM2"
-            districts_geojson_path = adm2_dir / "geoBoundaries-RWA-ADM2.geojson"
-            
-            if districts_geojson_path.exists():
-                print(f"🔄 Loading district data directly from JSON: {districts_geojson_path}")
-                try:
-                    with open(districts_geojson_path, 'r', encoding='utf-8') as f:
-                        self.districts_geojson_data = json.load(f)
-                    
-                    self.districts = [
-                        feature['properties']['shapeName'] 
-                        for feature in self.districts_geojson_data['features']
-                    ]
-                    print(f"✅ Successfully loaded {len(self.districts)} districts from JSON")
-                    return True
-                except Exception as e:
-                    print(f"❌ Failed to load district JSON directly: {e}")
-            
-            print("❌ No district geographic data found")
-            return False
-                
-        except Exception as e:
-            print(f"❌ Error loading district data: {str(e)}")
-            return False
-    
-    def get_sample_data(self):
-        """
-        Generate sample data that matches the loaded provinces
-        
-        Returns:
-            pd.DataFrame: Sample data with matching province names
-        """
-        if self.provinces:
-            # Use actual province names from the geographic data
-            num_provinces = len(self.provinces)
-            
-            # Generate realistic sample data
-            import random
-            random.seed(42)  # For reproducible results
-            
-            data = {
-                'Region': self.provinces,
-                'Vitamin_A': [random.randint(30, 70) for _ in range(num_provinces)],
-                'Iron': [random.randint(35, 75) for _ in range(num_provinces)],
-                'Zinc': [random.randint(25, 65) for _ in range(num_provinces)],
-                'Population': [random.randint(200000, 1500000) for _ in range(num_provinces)]
-            }
+            print(f"⚠️  Failed to read {path.name}: {e}")
+
+    print("⚠️  No matching GeoJSON/zip found; falling back to scatter mode")
+    return None, "properties.shapeName"
+
+
+PROV_GEOJSON, PROV_KEY = _find_geojson(ADM1_PATTERNS)
+DIST_GEOJSON, DIST_KEY = _find_geojson(ADM2_PATTERNS)
+
+
+# ----------------------------------------------------------------------
+# Dummy data (or real loader later)
+# ----------------------------------------------------------------------
+def _sample_dataframe(level: str) -> pd.DataFrame:
+    """
+    Build a DataFrame with Region / District, Vitamin_A, Iron, Zinc, Population.
+    IDs must match whatever `featureidkey` we detected (shapeNameID, shapeID, …).
+    """
+    if level == "province" and PROV_GEOJSON:
+        names = [f["properties"]["shapeName"] for f in PROV_GEOJSON["features"]]
+        ids   = [f["properties"].get("shapeNameID") or
+                 f["properties"].get("shapeID") or
+                 f["properties"]["shapeName"]         # fallback
+                 for f in PROV_GEOJSON["features"]]
+    elif level == "district" and DIST_GEOJSON:
+        names = [f["properties"]["shapeName"] for f in DIST_GEOJSON["features"]]
+        ids   = [f["properties"].get("shapeNameID") or
+                 f["properties"].get("shapeID") or
+                 f["properties"]["shapeName"]
+                 for f in DIST_GEOJSON["features"]]
+    else:                                         # fabricate generic demo names
+        if level == "province":
+            names = ["City of Kigali", "Northern Province", "Eastern Province",
+                     "Southern Province", "Western Province"]
+            ids   = [f"RWA0{i+1}" for i in range(len(names))]
         else:
-            # Fallback data if no geographic data is available
-            data = {
-                'Region': ['Kigali', 'Northern', 'Southern', 'Eastern', 'Western'],
-                'Vitamin_A': [65, 45, 55, 40, 50],
-                'Iron': [70, 50, 60, 45, 55],
-                'Zinc': [60, 40, 50, 35, 45],
-                'Population': [1200000, 800000, 950000, 750000, 900000]
-            }
-        
-        return pd.DataFrame(data)
-    
-    def get_sample_district_data(self):
-        """
-        Generate sample data for districts
-        
-        Returns:
-            pd.DataFrame: Sample data with district names
-        """
-        if self.districts:
-            # Use actual district names from the geographic data
-            num_districts = len(self.districts)
-            
-            import random
-            random.seed(42)  # For reproducible results
-            
-            data = {
-                'District': self.districts,
-                'Vitamin_A': [random.randint(25, 75) for _ in range(num_districts)],
-                'Iron': [random.randint(30, 80) for _ in range(num_districts)],
-                'Zinc': [random.randint(20, 70) for _ in range(num_districts)],
-                'Population': [random.randint(50000, 400000) for _ in range(num_districts)]
-            }
-        else:
-            # Fallback with some known Rwanda districts
-            districts = [
-                'Nyarugenge', 'Gasabo', 'Kicukiro', 'Nyanza', 'Gisagara', 
-                'Nyamagabe', 'Ruhango', 'Muhanga', 'Kamonyi', 'Musanze',
-                'Burera', 'Gicumbi', 'Rulindo', 'Nyabihu', 'Ngororero'
-            ]
-            data = {
-                'District': districts,
-                'Vitamin_A': [45, 38, 52, 41, 47, 39, 44, 36, 49, 42, 40, 46, 43, 37, 48],
-                'Iron': [50, 43, 57, 46, 52, 44, 49, 41, 54, 47, 45, 51, 48, 42, 53],
-                'Zinc': [40, 33, 47, 36, 42, 34, 39, 31, 44, 37, 35, 41, 38, 32, 43],
-                'Population': [284551, 530515, 319145, 162509, 142332, 181598, 
-                              161368, 290969, 87211, 368267, 298484, 485883, 
-                              287681, 309668, 415906]
-            }
-        
-        return pd.DataFrame(data)
-    
-    def create_choropleth_map(self, df, nutrient_column, title):
-        """
-        Create a choropleth map of Rwanda showing nutrient deficiency levels
-        
-        Args:
-            df (pd.DataFrame): Data with Region and nutrient columns
-            nutrient_column (str): Name of the nutrient column to visualize
-            title (str): Title for the map
-            
-        Returns:
-            plotly.graph_objects.Figure: Choropleth map figure
-        """
-        if self.geojson_data is None:
-            return self.create_fallback_visualization(df, nutrient_column, title)
-        
-        try:
-            # Create the choropleth map
-            fig = px.choropleth(
-                df,
-                geojson=self.geojson_data,
-                locations='Region',
-                color=nutrient_column,
-                featureidkey="properties.shapeName",
-                projection="mercator",
-                title=title,
-                color_continuous_scale="RdYlBu_r",
-                range_color=[df[nutrient_column].min(), df[nutrient_column].max()],
-                labels={nutrient_column: f"{nutrient_column.replace('_', ' ')} Deficiency (%)"}
-            )
-            
-            # Update layout for better appearance
-            fig.update_geos(
-                fitbounds="locations",
-                visible=False
-            )
-            
-            fig.update_layout(
-                title_x=0.5,
-                title_font_size=16,
-                height=500,
-                margin=dict(t=60, b=20, l=20, r=20)
-            )
-            
-            # Add hover information
-            fig.update_traces(
-                hovertemplate="<b>%{customdata[0]}</b><br>" +
-                            f"{nutrient_column.replace('_', ' ')} Deficiency: %{{z:.1f}}%<br>" +
-                            "Population: %{customdata[1]:,.0f}<extra></extra>",
-                customdata=df[['Region', 'Population']].values
-            )
-            
-            return fig
-            
-        except Exception as e:
-            print(f"Error creating choropleth map: {str(e)}")
-            return self.create_fallback_visualization(df, nutrient_column, title)
-    
-    def create_fallback_visualization(self, df, nutrient_column, title, location_col='Region'):
-        """
-        Create a fallback visualization when geographic data is not available
-        
-        Args:
-            df (pd.DataFrame): Data with Region/District and nutrient columns
-            nutrient_column (str): Name of the nutrient column to visualize
-            title (str): Title for the visualization
-            location_col (str): Name of the location column ('Region' or 'District')
-            
-        Returns:
-            plotly.graph_objects.Figure: Scatter plot figure
-        """
-        fig = px.scatter(
-            df,
-            x='Population',
-            y=nutrient_column,
-            size='Population',
-            color=nutrient_column,
-            hover_name=location_col,
-            title=f"{title} (Geographic data not available)",
-            color_continuous_scale='RdYlBu_r',
-            labels={
-                'Population': 'Population',
-                nutrient_column: f"{nutrient_column.replace('_', ' ')} Deficiency (%)"
-            }
-        )
-        
-        fig.update_layout(
-            title_x=0.5,
-            title_font_size=16,
-            height=500,
-            margin=dict(t=60, b=20, l=20, r=20)
-        )
-        
-        return fig
-    
-    def create_district_choropleth_map(self, df, nutrient_column, title):
-        """
-        Create a choropleth map showing district-level data
-        
-        Args:
-            df (pd.DataFrame): Data with District and nutrient columns
-            nutrient_column (str): Name of the nutrient column to visualize
-            title (str): Title for the map
-            
-        Returns:
-            plotly.graph_objects.Figure: Choropleth map figure
-        """
-        if self.districts_geojson_data is None:
-            return self.create_fallback_visualization(df, nutrient_column, title, location_col='District')
-        
-        try:
-            # Create the district-level choropleth map
-            fig = px.choropleth(
-                df,
-                geojson=self.districts_geojson_data,
-                locations='District',
-                color=nutrient_column,
-                featureidkey="properties.shapeName",
-                projection="mercator",
-                title=f"{title} (District Level)",
-                color_continuous_scale="RdYlBu_r",
-                range_color=[df[nutrient_column].min(), df[nutrient_column].max()],
-                labels={nutrient_column: f"{nutrient_column.replace('_', ' ')} Deficiency (%)"}
-            )
-            
-            # Update layout for better appearance
-            fig.update_geos(
-                fitbounds="locations",
-                visible=False
-            )
-            
-            fig.update_layout(
-                title_x=0.5,
-                title_font_size=16,
-                height=600,  # Slightly taller for district detail
-                margin=dict(t=60, b=20, l=20, r=20)
-            )
-            
-            # Add hover information
-            fig.update_traces(
-                hovertemplate="<b>%{customdata[0]}</b><br>" +
-                            f"{nutrient_column.replace('_', ' ')} Deficiency: %{{z:.1f}}%<br>" +
-                            "Population: %{customdata[1]:,.0f}<extra></extra>",
-                customdata=df[['District', 'Population']].values
-            )
-            
-            return fig
-            
-        except Exception as e:
-            print(f"Error creating district choropleth map: {str(e)}")
-            return self.create_fallback_visualization(df, nutrient_column, title, location_col='District')
-    
-    def create_layered_map(self, province_df, district_df, nutrient_column, title, level='district'):
-        """
-        Create a map with both province and district boundaries
-        
-        Args:
-            province_df (pd.DataFrame): Province-level data
-            district_df (pd.DataFrame): District-level data
-            nutrient_column (str): Name of the nutrient column to visualize
-            title (str): Title for the map
-            level (str): Primary level to show data for ('district' or 'province')
-            
-        Returns:
-            plotly.graph_objects.Figure: Layered map figure
-        """
-        if level == 'district' and self.districts_geojson_data is not None:
-            # Start with district-level choropleth
-            fig = self.create_district_choropleth_map(district_df, nutrient_column, title)
-            
-            # Add province boundaries as overlay
-            if self.geojson_data is not None:
-                self._add_province_boundaries_overlay(fig)
-                
-            fig.update_layout(title=f"{title} (Districts with Province Boundaries)")
-            
-        elif self.geojson_data is not None:
-            # Fallback to province-level with district boundaries if available
-            fig = self.create_choropleth_map(province_df, nutrient_column, title)
-            
-            if self.districts_geojson_data is not None:
-                self._add_district_boundaries_overlay(fig)
-                
-            fig.update_layout(title=f"{title} (Provinces with District Boundaries)")
-        else:
-            # No geographic data available
-            return self.create_fallback_visualization(
-                district_df if level == 'district' else province_df, 
-                nutrient_column, 
-                title, 
-                location_col='District' if level == 'district' else 'Region'
-            )
-        
-        return fig
-    
-    def _add_province_boundaries_overlay(self, fig):
-        """Add province boundaries as overlay lines to existing figure"""
-        if self.geojson_data is None:
-            return
-        
-        try:
-            for feature in self.geojson_data['features']:
-                coords = feature['geometry']['coordinates']
-                
-                # Handle different geometry types
-                if feature['geometry']['type'] == 'Polygon':
-                    coords = [coords]
-                
-                for polygon in coords:
-                    if len(polygon) > 0:
-                        lons = [coord[0] for coord in polygon[0]] + [polygon[0][0][0]]
-                        lats = [coord[1] for coord in polygon[0]] + [polygon[0][0][1]]
-                        
-                        fig.add_trace(go.Scatter(
-                            x=lons,
-                            y=lats,
-                            mode='lines',
-                            line=dict(width=3, color='black'),
-                            name='Province Boundaries',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ))
-        except Exception as e:
-            print(f"Error adding province boundaries overlay: {e}")
-    
-    def _add_district_boundaries_overlay(self, fig):
-        """Add district boundaries as overlay lines to existing figure"""
-        if self.districts_geojson_data is None:
-            return
-        
-        try:
-            for feature in self.districts_geojson_data['features']:
-                coords = feature['geometry']['coordinates']
-                
-                # Handle different geometry types
-                if feature['geometry']['type'] == 'Polygon':
-                    coords = [coords]
-                
-                for polygon in coords:
-                    if len(polygon) > 0:
-                        lons = [coord[0] for coord in polygon[0]] + [polygon[0][0][0]]
-                        lats = [coord[1] for coord in polygon[0]] + [polygon[0][0][1]]
-                        
-                        fig.add_trace(go.Scatter(
-                            x=lons,
-                            y=lats,
-                            mode='lines',
-                            line=dict(width=1, color='gray'),
-                            name='District Boundaries',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ))
-        except Exception as e:
-            print(f"Error adding district boundaries overlay: {e}")
-    
-    def get_map_info(self):
-        """
-        Get information about the loaded map data
-        
-        Returns:
-            dict: Information about the map data
-        """
-        return {
-            'geopandas_available': GEOPANDAS_AVAILABLE,
-            'geographic_data_loaded': self.geojson_data is not None,
-            'district_data_loaded': self.districts_geojson_data is not None,
-            'num_provinces': len(self.provinces) if self.provinces else 0,
-            'num_districts': len(self.districts) if self.districts else 0,
-            'provinces': self.provinces,
-            'districts': self.districts[:10] if len(self.districts) > 10 else self.districts,  # Show first 10 districts
-            'data_source': {
-                'provinces': 'zip file' if self.gdf is not None else 'geojson file' if self.geojson_data else 'none',
-                'districts': 'zip file' if self.districts_gdf is not None else 'geojson file' if self.districts_geojson_data else 'none'
-            }
+            names = [f"District {i+1}" for i in range(30)]
+            ids   = [f"RWA02{i:02d}" for i in range(30)]
+
+    # ── make sure IDs align with the feature key we auto-detected ─────────
+    key_tail = PROV_KEY if level == "province" else DIST_KEY
+    if key_tail.endswith("shapeName"):
+        ids = names                                   # plain label expected
+
+    # ---------------------------------------------------------------------
+    random.seed(42)
+    n = len(names)
+    df = pd.DataFrame(
+        {
+            "region_id": ids,
+            "display_name": names,
+            "Region": names if level == "province" else [None] * n,
+            "District": names if level == "district" else [None] * n,
+            "Vitamin_A": [random.randint(30, 70) for _ in range(n)],
+            "Iron":      [random.randint(35, 75) for _ in range(n)],
+            "Zinc":      [random.randint(25, 65) for _ in range(n)],
+            "Population": [random.randint(200_000, 1_500_000) for _ in range(n)],
         }
+    )
+    return df
 
-# Create a global instance
-rwanda_map = RwandaMapHandler()
 
-def get_rwanda_data():
-    """Convenience function to get Rwanda data"""
-    return rwanda_map.get_sample_data()
 
-def create_rwanda_map(df, nutrient_column, title):
-    """Convenience function to create Rwanda map"""
-    return rwanda_map.create_choropleth_map(df, nutrient_column, title)
+# Cache sample frames so they stay consistent
+_PROV_DF = _sample_dataframe("province")
+_DIST_DF = _sample_dataframe("district")
 
-# Add convenience functions for district-level functionality
-def get_rwanda_district_data():
-    """Convenience function to get Rwanda district data"""
-    return rwanda_map.get_sample_district_data()
 
-def create_rwanda_district_map(df, nutrient_column, title):
-    """Convenience function to create Rwanda district map"""
-    return rwanda_map.create_district_choropleth_map(df, nutrient_column, title)
+# ----------------------------------------------------------------------
+# Public data helpers
+# ----------------------------------------------------------------------
+def get_rwanda_data() -> pd.DataFrame:
+    return _PROV_DF.copy()
 
-def create_rwanda_layered_map(province_df, district_df, nutrient_column, title, level='district'):
-    """Convenience function to create layered map with both levels"""
-    return rwanda_map.create_layered_map(province_df, district_df, nutrient_column, title, level)
 
-def get_rwanda_map_info():
-    """Convenience function to get map information"""
-    return rwanda_map.get_map_info()
+def get_rwanda_district_data() -> pd.DataFrame:
+    return _DIST_DF.copy()
+
+
+def get_rwanda_map_info() -> Dict:
+    return {
+        "geopandas_available": GEOPANDAS_AVAILABLE,
+        "geographic_data_loaded": PROV_GEOJSON is not None,
+        "district_data_loaded": DIST_GEOJSON is not None,
+        "num_provinces": len(_PROV_DF),
+        "num_districts": len(_DIST_DF),
+        "provinces": _PROV_DF["display_name"].tolist(),
+        "districts": _DIST_DF["display_name"].tolist(),
+        "data_source": {
+            "provinces": "geojson/zip" if PROV_GEOJSON else "dummy",
+            "districts": "geojson/zip" if DIST_GEOJSON else "dummy",
+        },
+    }
+
+
+# ----------------------------------------------------------------------
+# Core choropleth generator
+# ----------------------------------------------------------------------
+def _mapbox_choropleth(
+    df: pd.DataFrame,
+    geojson: dict | None,
+    feature_key: str,
+    nutrient_col: str,
+    title: str,
+    opacity: float = 0.85,
+):
+    if geojson is None:
+        # fallback scatter point at Rwanda centroid
+        fig = px.scatter_geo(
+            df,
+            lat=[-1.94] * len(df),
+            lon=[29.9] * len(df),
+            size=nutrient_col,
+            color=nutrient_col,
+            hover_name="display_name",
+            title=f"{title} (no geometry)",
+            color_continuous_scale="RdYlBu_r",
+        )
+        fig.update_layout(margin=dict(l=0, r=0, t=40, b=0))
+        return fig
+
+    fig = px.choropleth_mapbox(
+        df,
+        geojson=geojson,
+        locations="region_id",
+        color=nutrient_col,
+        featureidkey=feature_key,
+        hover_name="display_name",
+        hover_data={nutrient_col: ":.1f"},
+        color_continuous_scale="RdYlBu_r",
+        mapbox_style="carto-positron",
+        zoom=7,
+        center={"lat": -1.94, "lon": 29.9},
+        opacity=opacity,
+    )
+    fig.update_layout(
+        title=dict(text=title, x=0.5, xanchor="center", pad=dict(t=10)),
+        margin=dict(l=0, r=0, t=40, b=0),
+        coloraxis_colorbar=dict(title="Deficiency (%)", yanchor="middle", len=250),
+    )
+    
+    return fig
+
+
+# ----------------------------------------------------------------------
+# Public builders (called by overview.py)
+# ----------------------------------------------------------------------
+def create_rwanda_map(df: pd.DataFrame | None, nutrient_column: str, title: str):
+    df = df if df is not None else _PROV_DF
+    return _mapbox_choropleth(df, PROV_GEOJSON, PROV_KEY, nutrient_column, title)
+
+
+def create_rwanda_district_map(
+    df: pd.DataFrame | None, nutrient_column: str, title: str
+):
+    df = df if df is not None else _DIST_DF
+    return _mapbox_choropleth(df, DIST_GEOJSON, DIST_KEY, nutrient_column, title)
+
+
+def create_rwanda_layered_map(
+    province_df: pd.DataFrame | None,
+    district_df: pd.DataFrame | None,
+    nutrient_column: str,
+    title: str,
+    level: str = "district",
+):
+    # base layer
+    district_df = district_df if district_df is not None else _DIST_DF
+    fig = _mapbox_choropleth(
+        district_df, DIST_GEOJSON, DIST_KEY, nutrient_column, title, 0.85
+    )
+
+    # province outline overlay
+    if PROV_GEOJSON:
+        outline = px.choropleth_mapbox(
+            _PROV_DF,
+            geojson=PROV_GEOJSON,
+            locations="region_id",
+            color_discrete_sequence=["rgba(0,0,0,0)"],
+            featureidkey=PROV_KEY,
+        ).data[0]
+        outline.update(marker_line_color="black", marker_line_width=1.2, hoverinfo="skip")
+        fig.add_trace(outline)
+
+    return fig
