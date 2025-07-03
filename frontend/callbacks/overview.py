@@ -1,8 +1,8 @@
-# overview.py    (callbacks for Page 1 – Overview Maps)
 """
 Callbacks for Page 1 - Overview Maps
 """
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 from dash import Input, Output, html
 import plotly.express as px
 from rwanda_map import (
@@ -12,7 +12,7 @@ from rwanda_map import (
 )
 
 # ───── Load your data once ────────────────────────────────────────────
-_district_meta = pd.read_excel('./data/District_to_Province.xlsx')
+_district_meta = pd.read_excel('data/District_to_Province.xlsx')
 _province_name_map = {
     'East': 'Eastern Province',
     'North': 'Northern Province',
@@ -21,10 +21,11 @@ _province_name_map = {
     'City of Kigali': 'City of Kigali',
 }
 
-_nutri_file = './data/Scraped_Nutrient_Adequacy.xlsx'
+_nutri_file = 'data/Scraped_Nutrient_Adequacy.xlsx'
 _cons_df  = pd.read_excel(_nutri_file, sheet_name='micro nut adeq')
 _prod_df  = pd.read_excel(_nutri_file, sheet_name='production adeq')
 
+# Nutrient code and labels for axes/titles
 _nutri_code = {
     'Vitamin_A': 'Vit. A',
     'Iron':      'Fe',
@@ -41,13 +42,75 @@ _ind_label = {
     'consumption': 'Consumption Adequacy',
     'production':  'Production Adequacy',
     'stunting':    'Stunting',
-    'gapscore':   'Gap Score',
+    'gapscore':    'Gap Score',
 }
+_ind_label['futurestunting'] = 'Future Stunting Projection'
 
-# Health / stunting data
-_nisr_df = pd.read_excel('./data/NISR_Nutrition_2020.xlsx')
+# Health / stunting data (raw 2020 values)
+_nisr_df   = pd.read_excel('data/NISR_Nutrition_2014.xlsx')
 # column name for <–2SD
-_stunt_col = '% below -2 SD²'
+_stunt_col = '% < -2SD'
+
+# ───── Train Random Forest for Gap Score (2014 data) ─────────────────────
+# 2014 stunting target is called '% < -2SD'
+_train_stunt = (
+    pd.read_excel('data/NISR_Nutrition_2014.xlsx')
+      [['District', '% < -2SD']]
+      .rename(columns={'% < -2SD': 'stunting_percent'})
+)
+
+_pov_df = pd.read_excel('data/NISR_Poverty_2014.xlsx')[
+    ['District', 'Poverty Incidence (%)', 'Extreme Poverty Incidence (%)']
+]
+
+_cons_feat = (
+    pd.read_excel(_nutri_file, sheet_name='micro nut adeq')
+      [['District', 'Fe mid', 'Zn mid', 'Vit. A mid']]
+      .rename(columns={
+          'Fe mid':    'Fe_cons',
+          'Zn mid':    'Zn_cons',
+          'Vit. A mid':'VitA_cons'
+      })
+)
+
+_prod_feat = (
+    pd.read_excel(_nutri_file, sheet_name='production adeq')
+      [['District',
+        'Production Adequacy  (Fe) mid',
+        'Production Adequacy  (Zn) mid',
+        'Production Adequacy  (Vit. A) mid'
+      ]]
+      .rename(columns={
+          'Production Adequacy  (Fe) mid':    'Fe_prod',
+          'Production Adequacy  (Zn) mid':    'Zn_prod',
+          'Production Adequacy  (Vit. A) mid':'VitA_prod'
+      })
+)
+
+# merge all training features + target
+_rf_df = (
+    _train_stunt
+      .merge(_pov_df,      on='District', how='inner')
+      .merge(_cons_feat,   on='District', how='inner')
+      .merge(_prod_feat,   on='District', how='inner')
+      .dropna()
+)
+
+_feature_cols = [
+    'Poverty Incidence (%)', 'Extreme Poverty Incidence (%)',
+    'Fe_cons', 'Zn_cons', 'VitA_cons',
+    'Fe_prod','Zn_prod','VitA_prod'
+]
+
+_X = _rf_df[_feature_cols]
+_y = _rf_df['stunting_percent']
+
+_rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+_rf_model.fit(_X, _y)
+
+# attach predicted gapscore back to the DF
+_rf_df['gapscore'] = _rf_model.predict(_X)
+
 
 def register_overview_callbacks(app, df, district_df):
     """Register callbacks for the overview page"""
@@ -60,8 +123,8 @@ def register_overview_callbacks(app, df, district_df):
             Output('summary-stats',      'children'),
         ],
         [
-            Input('nutrient-dropdown',  'value'),
-            Input('indicator-dropdown','value'),
+            Input('nutrient-dropdown',   'value'),
+            Input('indicator-dropdown',  'value'),
             Input('map-level-dropdown',  'value'),
         ]
     )
@@ -69,54 +132,61 @@ def register_overview_callbacks(app, df, district_df):
         if nutrient == "stunting":
             colscale = [
                 [0.0, "green"],
-                [0.5, "white"],
+                [0.3, "grey"],
                 [1.0, "red"],
             ]
         else:
             colscale = [
                 [0.0, "red"],
-                [0.5, "white"],
+                [0.3, "grey"],
                 [1.0, "green"],
             ]
         # ─── pick the right raw data ──────────────────────────────
         if indicator == 'production':
-            print("trying to get production data for " + nutrient)
             raw = _prod_df
             mid_col = f"Production Adequacy  ({_nutri_code[nutrient]}) mid"
         elif indicator == 'consumption':
-            print("trying to get consumption data for " + nutrient)
             raw = _cons_df
             mid_col = f"{_nutri_code[nutrient]} mid"
         elif indicator == 'gapscore':
-            # pull both
-            cons_col = f"{_nutri_code[nutrient]} mid"
-            prod_col = f"Production Adequacy  ({_nutri_code[nutrient]}) mid"
-            tmp = (
-                _cons_df[['District', cons_col]]
-                .merge(
-                    _prod_df[['District', prod_col]],
-                    on='District', how='inner'
-                )
-                .rename(columns={cons_col: 'cons', prod_col: 'prod'})
-            )
-            # weights: consumption more important
-            w_cons, w_prod = 0.7, 0.3
-            tmp['gapscore'] = (tmp['cons'] * w_cons + tmp['prod'] * w_prod)
-            raw = tmp
+            # use our Random Forest predictions
+            raw = _rf_df[['District', 'gapscore']]
             mid_col = 'gapscore'
+            nutrient = 'gapscore'
+        elif indicator == 'futurestunting':
+            top3 = _rf_df.nlargest(3, 'gapscore')['District']
+            boost = _rf_df[_rf_df['District'].isin(top3)][['District'] + _feature_cols].copy()
 
-        else:  # stunting
+            # boost both consumption & production by 25% (cap consumes at 100)
+            #boost = _rf_df[['District'] + _feature_cols].copy()
+            #boost[['Fe_cons','Zn_cons','VitA_cons']] = (
+            #    boost[['Fe_cons','Zn_cons','VitA_cons']] * 1.33
+            #).clip(upper=100)
+            #boost[['Fe_prod','Zn_prod','VitA_prod']] = (
+            #    boost[['Fe_prod','Zn_prod','VitA_prod']] * 1.33
+            #)
+            boost[['Extreme Poverty Incidence (%)']] = (
+                boost[['Extreme Poverty Incidence (%)']] * 1.33
+            )
+            boost[['Poverty Incidence (%)']] = (
+                boost[['Poverty Incidence (%)']] * 1.33
+            )
+            boost['futurestunting'] = _rf_model.predict(boost[_feature_cols])
+            #raw      = boost[['District','futurestunting']]
+            projected = boost[['District','futurestunting']]
+            inherit = _rf_df[['District','gapscore']].rename(columns={'gapscore':'futurestunting'})
+            inherit = inherit[~inherit['District'].isin(top3)]
+            raw = pd.concat([projected, inherit], ignore_index=True)
+
+            mid_col  = 'futurestunting'
+            nutrient = 'futurestunting'
+        else:
             raw = _nisr_df
             mid_col = _stunt_col
+            nutrient = 'stunting'
 
-        # ─── district‐level DataFrame ──────────────────────────────
-        if indicator in ('production', 'consumption'):
-            print("fetching " + indicator + " data")
-            ddf = raw[['District', mid_col]].rename(columns={mid_col: nutrient})
-        else:
-            name = 'stunting' if indicator == 'stunting' else 'gapscore'
-            ddf = raw[['District', mid_col]].rename(columns={mid_col: name})
-            nutrient = name
+        # ─── construct district-level DataFrame ────────────────────
+        ddf = raw[['District', mid_col]].rename(columns={mid_col: nutrient})
 
         # merge population + province
         ddf = ddf.merge(
@@ -133,7 +203,6 @@ def register_overview_callbacks(app, df, district_df):
 
         # ─── province‐level DataFrame ─────────────────────────────
         if map_level == 'province':
-            # map raw Province -> full display name
             ddf['Province_full'] = ddf['Province'].map(_province_name_map)
             grp = ddf.groupby('Province_full').apply(
                 lambda g: pd.Series({
@@ -149,9 +218,7 @@ def register_overview_callbacks(app, df, district_df):
             )
             current_df = province_df_current
             location_col = 'Region'
-
         else:
-            # district or layered
             current_df   = district_df_current
             location_col = 'District'
 
@@ -187,6 +254,25 @@ def register_overview_callbacks(app, df, district_df):
             )
         map_fig.update_layout(margin=dict(l=0,r=0,t=40,b=0), autosize=True)
 
+        # ─── highlight top 3 gapscore districts ───────────────────
+        if (indicator == 'gapscore' or indicator == 'futurestunting') and map_level == 'district':
+            # get the three districts with highest gapscore
+            top3_highlight = _rf_df.nlargest(3, 'gapscore')['District'].tolist()
+            top3 = current_df.nlargest(3, nutrient)['District'].tolist()
+            for trace in map_fig.data:
+                # choropleth traces have a .locations array
+                if hasattr(trace, 'locations'):
+                    # build parallel lists of line colors & widths
+                    line_colors = [
+                        '#2b8bd2' if loc in top3_highlight else 'black'
+                        for loc in trace.locations
+                    ]
+                    line_widths = [
+                        3 if loc in top3_highlight else 0.5
+                        for loc in trace.locations
+                    ]
+                    trace.marker.line.color = line_colors
+                    trace.marker.line.width = line_widths
         # ─── data table ─────────────────────────────────────────
         disp = current_df.head(10) if map_level in ['district','layered'] else current_df
         rows = []

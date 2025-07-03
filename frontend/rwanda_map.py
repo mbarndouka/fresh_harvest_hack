@@ -200,16 +200,16 @@ def _mapbox_choropleth(
     # ─── pick color scale ────────────────────────────────────────
     # for stunting: white→red (low→high)
     # for production/consumption adequacy: red→white (low→high)
-    if nutrient_col == "stunting":
+    if nutrient_col == "stunting" or nutrient_col == "gapscore" or nutrient_col == "futurestunting":
         colscale = [
             [0.0, "green"],
-            [0.5, "white"],
+            [0.7, "grey"],
             [1.0, "red"],
         ]
     else:
         colscale = [
             [0.0, "red"],
-            [0.5, "white"],
+            [0.7, "grey"],
             [1.0, "green"],
         ]
     if geojson is None:
@@ -247,6 +247,9 @@ def _mapbox_choropleth(
         coloraxis_colorbar=dict(title="Prevalence (%)", yanchor="middle", len=1),
     )
     
+    if nutrient_col in ("stunting", "gapscore", "futurestunting"):
+        fig.update_coloraxes(cmin=10, cmax=50)
+
     return fig
 
 

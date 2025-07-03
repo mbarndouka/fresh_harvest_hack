@@ -54,6 +54,7 @@ def get_page_1_layout():
                                     {"label": "Production Adequacy",  "value": "production"},
                                     {"label": "Stunting (% < –2 SD)",  "value": "stunting"},
                                     {"label": "Gap Score",             "value": "gapscore"},
+                                    {"label": "Future Stunting Projection",    "value": "futurestunting"},
                                 ],
                                 value="consumption",
                                 clearable=False,
