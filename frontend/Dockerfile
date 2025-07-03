@@ -23,8 +23,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY rwanda_map.py .
 
+# Copy modular structure directories
+COPY layouts/ ./layouts/
+COPY callbacks/ ./callbacks/
+
 # Copy data directory for geographic maps
 COPY data/ ./data/
+COPY assets/ ./assets/
 
 # Expose port 8050
 EXPOSE 8050
