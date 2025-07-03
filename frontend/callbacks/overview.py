@@ -10,7 +10,9 @@ from rwanda_map import (
     create_rwanda_district_map,
     create_rwanda_layered_map,
 )
-
+from sklearn.metrics import r2_score
+import plotly.graph_objects as go
+from dash import no_update
 # ───── Load your data once ────────────────────────────────────────────
 _district_meta = pd.read_excel('data/District_to_Province.xlsx')
 _province_name_map = {
@@ -116,6 +118,9 @@ def register_overview_callbacks(app, df, district_df):
             Output('nutrient-map',       'figure'),
             Output('data-table',         'children'),
             Output('summary-stats',      'children'),
+            Output('gapscore-scatter',  'figure'),
+            Output('gapscore-scatter',  'style'),
+
         ],
         [
             Input('nutrient-dropdown',   'value'),
@@ -419,7 +424,30 @@ def register_overview_callbacks(app, df, district_df):
             'border':'1px solid #dee2e6'
         })
 
-        return bar_fig, map_fig, data_table, summary
+        # ─── predicted vs observed scatter for gapscore ────────────
+        if indicator == 'gapscore':
+            # _rf_df has both: 'stunting_percent' (actual) and 'gapscore' (pred)
+            df_sc = _rf_df[['stunting_percent','gapscore']].rename(
+                columns={'stunting_percent':'observed','gapscore':'predicted'}
+            )
+            r2 = r2_score(df_sc['observed'], df_sc['predicted'])
+            scatter_fig = px.scatter(
+                df_sc, x='observed', y='predicted',
+                title=f'Predicted vs Observed Stunting (R²={r2:.2f})',
+                labels={'observed':'Observed % stunted','predicted':'Predicted % stunted'}
+            )
+            scatter_fig.add_shape(
+                type='line', line=dict(dash='dash'),
+                x0=df_sc.observed.min(), x1=df_sc.observed.max(),
+                y0=df_sc.observed.min(), y1=df_sc.observed.max()
+            )
+            scatter_style = {}         # visible
+        else:
+            # blank figure when not gapscore
+            scatter_fig = go.Figure()
+            scatter_style = {'display':'none'}  # hide
+
+        return bar_fig, map_fig, data_table, summary, scatter_fig, scatter_style
 
     # end of update_charts
 

@@ -94,7 +94,14 @@ def get_page_1_layout():
                 className="gx-0",
                 style={"marginBottom": "-1rem"},
             ),
-
+            # ─── gapscore scatter (pred vs obs) ─────────────────────────
+            dbc.Row(
+                dbc.Col(
+                    dcc.Graph(id="gapscore-scatter", style={'display':'none'}),
+                    md=12,
+                    className="mb-4",
+                )
+            ),
             # ─── bar chart ────────────────────────────────────────────────
             dbc.Row(
                 dbc.Col(
