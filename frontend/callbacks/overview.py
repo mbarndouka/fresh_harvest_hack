@@ -66,94 +66,209 @@ def register_overview_callbacks(app, df, district_df):
         ]
     )
     def update_charts(nutrient, indicator, map_level):
-        if nutrient == "stunting":
+
+        # Special handling for Population choropleth
+        if nutrient == "Population":
             colscale = [
-                [0.0, "green"],
-                [0.5, "white"],
-                [1.0, "red"],
+                [0.0, "#f7fbff"],
+                [0.2, "#c6dbef"],
+                [0.4, "#6baed6"],
+                [0.6, "#3182bd"],
+                [0.8, "#08519c"],
+                [1.0, "#08306b"],
             ]
-        else:
-            colscale = [
-                [0.0, "red"],
-                [0.5, "white"],
-                [1.0, "green"],
-            ]
-        # ─── pick the right raw data ──────────────────────────────
-        if indicator == 'production':
-            print("trying to get production data for " + nutrient)
-            raw = _prod_df
-            mid_col = f"Production Adequacy  ({_nutri_code[nutrient]}) mid"
-        elif indicator == 'consumption':
-            print("trying to get consumption data for " + nutrient)
-            raw = _cons_df
-            mid_col = f"{_nutri_code[nutrient]} mid"
-        elif indicator == 'gapscore':
-            # pull both
-            cons_col = f"{_nutri_code[nutrient]} mid"
-            prod_col = f"Production Adequacy  ({_nutri_code[nutrient]}) mid"
-            tmp = (
-                _cons_df[['District', cons_col]]
-                .merge(
-                    _prod_df[['District', prod_col]],
-                    on='District', how='inner'
+            # Use only population column
+            ddf = _district_meta[['District', 'Province', 'Population']].copy()
+            district_df_current = ddf.assign(
+                region_id    = ddf['District'],
+                display_name = ddf['District'],
+            )
+            # Province-level aggregation
+            if map_level == 'province':
+                ddf['Province_full'] = ddf['Province'].map(_province_name_map)
+                grp = ddf.groupby('Province_full').agg({
+                    'Population': 'sum'
+                }).reset_index().rename(columns={'Province_full':'Province'})
+                province_df_current = grp.assign(
+                    region_id    = grp['Province'],
+                    display_name = grp['Province'],
+                    Region       = grp['Province'],
                 )
-                .rename(columns={cons_col: 'cons', prod_col: 'prod'})
+                current_df = province_df_current
+                location_col = 'Region'
+            else:
+                current_df = district_df_current
+                location_col = 'District'
+
+            # Bar chart title and figure
+            title = f"Population by {location_col}"
+            bar_fig = px.bar(
+                current_df, x=location_col, y="Population",
+                title=title, color="Population", color_continuous_scale=colscale
             )
-            # weights: consumption more important
-            w_cons, w_prod = 0.7, 0.3
-            tmp['gapscore'] = (tmp['cons'] * w_cons + tmp['prod'] * w_prod)
-            raw = tmp
-            mid_col = 'gapscore'
-
-        else:  # stunting
-            raw = _nisr_df
-            mid_col = _stunt_col
-
-        # ─── district‐level DataFrame ──────────────────────────────
-        if indicator in ('production', 'consumption'):
-            print("fetching " + indicator + " data")
-            ddf = raw[['District', mid_col]].rename(columns={mid_col: nutrient})
-        else:
-            name = 'stunting' if indicator == 'stunting' else 'gapscore'
-            ddf = raw[['District', mid_col]].rename(columns={mid_col: name})
-            nutrient = name
-
-        # merge population + province
-        ddf = ddf.merge(
-            _district_meta[['District','Province','Population']],
-            on='District',
-            how='right',
-        )
-
-        # build district_df for map & table
-        district_df_current = ddf.assign(
-            region_id    = ddf['District'],
-            display_name = ddf['District'],
-        )
-
-        # ─── province‐level DataFrame ─────────────────────────────
-        if map_level == 'province':
-            # map raw Province -> full display name
-            ddf['Province_full'] = ddf['Province'].map(_province_name_map)
-            grp = ddf.groupby('Province_full').apply(
-                lambda g: pd.Series({
-                    nutrient: (g[nutrient] * g['Population']).sum() / g['Population'].sum(),
-                    'Population': g['Population'].sum()
-                })
-            ).reset_index().rename(columns={'Province_full':'Province'})
-
-            province_df_current = grp.assign(
-                region_id    = grp['Province'],
-                display_name = grp['Province'],
-                Region       = grp['Province'],
+            bar_fig.update_layout(
+                showlegend=False,
+                title_x=0.5,
+                height=400,
+                margin=dict(t=50, b=40, l=40, r=20),
+                xaxis={'tickangle':45}
             )
-            current_df = province_df_current
-            location_col = 'Region'
 
+            # Map
+            map_title = title.replace(" by", " – Rwanda by")
+            # Custom tooltip for population
+            hovertemplate = (
+                '<b>%{customdata[0]}</b><br>'
+                'Province: %{customdata[1]}<br>'
+                'Population: %{customdata[2]:,}'
+                '<extra></extra>'
+            )
+            customdata = current_df[[location_col, 'Province' if map_level != 'province' else 'Region', 'Population']].values
+            if map_level == 'province':
+                map_fig = create_rwanda_map(current_df, "Population", map_title)
+            elif map_level == 'district':
+                map_fig = create_rwanda_district_map(current_df, "Population", map_title)
+            else:
+                # fallback to district if layered is selected
+                map_fig = create_rwanda_district_map(current_df, "Population", map_title)
+            # Set customdata and hovertemplate for all traces
+            for trace in map_fig.data:
+                trace.customdata = customdata
+                trace.hovertemplate = hovertemplate
+            map_fig.update_layout(margin=dict(l=0,r=0,t=40,b=0), autosize=True)
+
+            # Data table
+            disp = current_df.head(10) if map_level in ['district','layered'] else current_df
+            rows = []
+            for _, row in disp.iterrows():
+                rows.append(
+                    html.Tr([
+                        html.Td(row[location_col], style={'padding':'8px'}),
+                        html.Td(f"{row['Population']:,}", style={'padding':'8px'}),
+                    ])
+                )
+            data_table = html.Div([
+                html.H4(f"📊 {location_col} Population Data ({'Top 10' if map_level in ['district','layered'] else 'All'})"),
+                html.Table(
+                    [html.Thead(html.Tr([
+                        html.Th(location_col), html.Th("Population")
+                    ]))] +
+                    [html.Tbody(rows)],
+                    style={'width':'100%', 'border':'1px solid #dee2e6'}
+                )
+            ])
+
+            # Summary stats
+            avg_val = current_df['Population'].mean()
+            worst   = current_df.loc[current_df['Population'].idxmax(), location_col]
+            best    = current_df.loc[current_df['Population'].idxmin(), location_col]
+            wval    = current_df['Population'].max()
+            bval    = current_df['Population'].min()
+            popsum  = current_df['Population'].sum()
+
+            summary = html.Div([
+                html.H4("Key stats"),
+                html.P([html.Strong("Map level:"), f" {map_level.title()}"]),
+                html.P([html.Strong("Average Population:"), f" {avg_val:,.0f}"]),
+                html.P([html.Strong("Highest Population:"), f" {worst} ({wval:,})"], style={'color':'#e74c3c'}),
+                html.P([html.Strong("Lowest Population:"), f" {best} ({bval:,})"], style={'color':'#27ae60'}),
+                html.P([html.Strong("Total population:"), f" {popsum:,}"]),
+                html.P([html.Strong(f"Number of {location_col.lower()}s:"), f" {len(current_df)}"]),
+            ], style={
+                'backgroundColor':'#f8f9fa',
+                'padding':'15px',
+                'borderRadius':'5px',
+                'border':'1px solid #dee2e6'
+            })
+
+            return bar_fig, map_fig, data_table, summary
         else:
-            # district or layered
-            current_df   = district_df_current
-            location_col = 'District'
+            if nutrient == "stunting":
+                colscale = [
+                    [0.0, "green"],
+                    [0.5, "white"],
+                    [1.0, "red"],
+                ]
+            else:
+                colscale = [
+                    [0.0, "red"],
+                    [0.5, "white"],
+                    [1.0, "green"],
+                ]
+            # ─── pick the right raw data ──────────────────────────────
+            if indicator == 'production':
+                print("trying to get production data for " + nutrient)
+                raw = _prod_df
+                mid_col = f"Production Adequacy  ({_nutri_code[nutrient]}) mid"
+            elif indicator == 'consumption':
+                print("trying to get consumption data for " + nutrient)
+                raw = _cons_df
+                mid_col = f"{_nutri_code[nutrient]} mid"
+            elif indicator == 'gapscore':
+                # pull both
+                cons_col = f"{_nutri_code[nutrient]} mid"
+                prod_col = f"Production Adequacy  ({_nutri_code[nutrient]}) mid"
+                tmp = (
+                    _cons_df[['District', cons_col]]
+                    .merge(
+                        _prod_df[['District', prod_col]],
+                        on='District', how='inner'
+                    )
+                    .rename(columns={cons_col: 'cons', prod_col: 'prod'})
+                )
+                # weights: consumption more important
+                w_cons, w_prod = 0.7, 0.3
+                tmp['gapscore'] = (tmp['cons'] * w_cons + tmp['prod'] * w_prod)
+                raw = tmp
+                mid_col = 'gapscore'
+            else:  # stunting
+                raw = _nisr_df
+                mid_col = _stunt_col
+
+            # ─── district‐level DataFrame ──────────────────────────────
+            if indicator in ('production', 'consumption'):
+                print("fetching " + indicator + " data")
+                ddf = raw[['District', mid_col]].rename(columns={mid_col: nutrient})
+            else:
+                name = 'stunting' if indicator == 'stunting' else 'gapscore'
+                ddf = raw[['District', mid_col]].rename(columns={mid_col: name})
+                nutrient = name
+
+            # merge population + province
+            ddf = ddf.merge(
+                _district_meta[['District','Province','Population']],
+                on='District',
+                how='right',
+            )
+
+            # build district_df for map & table
+            district_df_current = ddf.assign(
+                region_id    = ddf['District'],
+                display_name = ddf['District'],
+            )
+
+            # ─── province‐level DataFrame ─────────────────────────────
+            if map_level == 'province':
+                # map raw Province -> full display name
+                ddf['Province_full'] = ddf['Province'].map(_province_name_map)
+                grp = ddf.groupby('Province_full').apply(
+                    lambda g: pd.Series({
+                        nutrient: (g[nutrient] * g['Population']).sum() / g['Population'].sum(),
+                        'Population': g['Population'].sum()
+                    })
+                ).reset_index().rename(columns={'Province_full':'Province'})
+
+                province_df_current = grp.assign(
+                    region_id    = grp['Province'],
+                    display_name = grp['Province'],
+                    Region       = grp['Province'],
+                )
+                current_df = province_df_current
+                location_col = 'Region'
+            else:
+                # district or layered
+                current_df   = district_df_current
+                location_col = 'District'
 
         # ─── bar chart ─────────────────────────────────────────────
         top_df = current_df.head(10) if map_level in ['district','layered'] else current_df

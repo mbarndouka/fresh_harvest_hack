@@ -36,6 +36,7 @@ def get_page_1_layout():
                                     {"label": "Vitamin A", "value": "Vitamin_A"},
                                     {"label": "Iron",      "value": "Iron"},
                                     {"label": "Zinc",      "value": "Zinc"},
+                                    {"label": "Population", "value": "Population"},
                                 ],
                                 value="Vitamin_A",
                                 clearable=False,
