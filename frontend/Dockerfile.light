@@ -1,0 +1,28 @@
+# Lightweight Docker image without geopandas (faster build)
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install basic dependencies only (skip geopandas for faster builds)
+RUN pip install --no-cache-dir dash plotly pandas
+
+# Copy application code
+COPY app.py .
+COPY rwanda_map.py .
+
+# Copy modular structure directories
+COPY layouts/ ./layouts/
+COPY callbacks/ ./callbacks/
+
+# Copy data directory for geographic maps
+COPY data/ ./data/
+
+# Expose port 8050
+EXPOSE 8050
+
+# Run the application
+CMD ["python", "app.py"]
