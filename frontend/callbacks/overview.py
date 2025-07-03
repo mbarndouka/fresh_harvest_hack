@@ -257,9 +257,9 @@ def register_overview_callbacks(app, df, district_df):
 
         # ─── micronutrient / stunting logic ────────────────────────
         if nutrient == "stunting":
-            colscale = [[0.0,"green"],[0.5,"white"],[1.0,"red"]]
+            colscale = [[0.0,"green"],[0.5,"grey"],[1.0,"red"]]
         else:
-            colscale = [[0.0,"red"],[0.5,"white"],[1.0,"green"]]
+            colscale = [[0.0,"red"],[0.5,"grey"],[1.0,"green"]]
 
         # pick raw data
         if indicator == 'production':
@@ -342,7 +342,16 @@ def register_overview_callbacks(app, df, district_df):
         )
 
         # map
-        map_title = title.replace(" by", " – Rwanda by")
+        if indicator == 'gapscore':
+            suffix = 'District' if map_level == 'district' else 'Region'
+            map_title = (
+            "Stunting Data Estimated from Micronutrient and Wealth Data"
+                f" - Rwanda by {suffix}"
+            )
+        else:
+            map_title = title.replace(" by", " – Rwanda by")
+            
+
         if map_level == 'province':
             map_fig = create_rwanda_map(province_df_current, nutrient, map_title)
         elif map_level == 'district':
@@ -360,11 +369,11 @@ def register_overview_callbacks(app, df, district_df):
             for trace in map_fig.data:
                 if hasattr(trace, 'locations'):
                     line_colors = [
-                        '#2b8bd2' if loc in top3_highlight else 'black'
+                        '#fcb526' if loc in top3_highlight else 'black'
                         for loc in trace.locations
                     ]
                     line_widths = [
-                        3 if loc in top3_highlight else 0.5
+                        4 if loc in top3_highlight else 0.5
                         for loc in trace.locations
                     ]
                     trace.marker.line.color = line_colors
